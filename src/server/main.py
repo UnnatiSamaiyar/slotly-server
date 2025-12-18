@@ -16,7 +16,7 @@
 # # CORS
 # app.add_middleware(
 #     CORSMiddleware,
-#     allow_origins=["http://localhost:3000"],
+#     allow_origins=["https://slotly.io"],
 #     allow_credentials=True,
 #     allow_methods=["*"],
 #     allow_headers=["*"],
@@ -76,7 +76,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://slotly.io",
-        "http://localhost:3000"
+        "https://slotly.io"
     ],
     allow_credentials=True,
     allow_methods=["*"],

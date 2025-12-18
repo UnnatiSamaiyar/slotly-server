@@ -57,7 +57,7 @@ def google_auth(payload: GoogleCodePayload, db: Session = Depends(get_db)):
         "code": payload.code,
         "client_id": os.getenv("GOOGLE_CLIENT_ID"),  # MUST MATCH GOOGLE CONSOLE
         "client_secret": os.getenv("GOOGLE_CLIENT_SECRET"),
-        "redirect_uri": "http://localhost:3000/auth/google/callback",
+        "redirect_uri": "https://slotly.io/auth/google/callback",
         "grant_type": "authorization_code"
     }
 
