@@ -76,7 +76,7 @@ from .routes import event_type
 
 from .routes import availability
 
-from server.public_booking.routes_public_booking import router as public_booking_router
+from .public_booking.routes_public_booking import router as public_booking_router
 
 app = FastAPI()
 
