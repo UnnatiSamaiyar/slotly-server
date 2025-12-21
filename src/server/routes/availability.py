@@ -56,14 +56,12 @@ def get_availability(user_sub: str, date: str, db: Session = Depends(get_db)):
 
 @router.get("/availability/{slug}")
 def get_availability_by_slug(slug: str, date: str, db: Session = Depends(get_db)):
-    profile = db.query(BookingProfile).filter(BookingProfile.slug == slug).first()
-    if not profile:
-        raise HTTPException(404, "Booking profile not found")
-
+    # 1) slug ONLY from event_types
     event_type = db.query(EventType).filter(EventType.slug == slug).first()
     if not event_type:
         raise HTTPException(404, "Event type not found")
 
+    # 2) date parse
     try:
         date_obj = datetime.strptime(date, "%Y-%m-%d").date()
     except:
@@ -76,11 +74,17 @@ def get_availability_by_slug(slug: str, date: str, db: Session = Depends(get_db)
         start_dt = datetime.combine(date_obj, slot_time)
         end_dt = start_dt + duration
 
-        booking_exists = db.query(Booking).filter(
-            Booking.profile_id == profile.id,
-            Booking.start_time < end_dt,
-            Booking.end_time > start_dt
-        ).first()
+        # 3) booking conflict check by slug (join), no BookingProfile lookup/404
+        booking_exists = (
+            db.query(Booking)
+            .join(BookingProfile, Booking.profile_id == BookingProfile.id)
+            .filter(
+                BookingProfile.slug == slug,
+                Booking.start_time < end_dt,
+                Booking.end_time > start_dt,
+            )
+            .first()
+        )
 
         slots.append({
             "time": slot_time.strftime("%H:%M"),
@@ -88,4 +92,4 @@ def get_availability_by_slug(slug: str, date: str, db: Session = Depends(get_db)
             "available": booking_exists is None
         })
 
-    return {"date": date, "profile_slug": profile.slug, "slots": slots}
+    return {"date": date, "event_type_slug": event_type.slug, "slots": slots}
