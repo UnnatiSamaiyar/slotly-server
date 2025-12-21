@@ -85,7 +85,7 @@ app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://slotly.io"],
+    allow_origins=["https://slotly.io", "http://localhost:3011"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
