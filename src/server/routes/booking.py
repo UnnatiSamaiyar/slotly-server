@@ -5,56 +5,46 @@ from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
 
 from ..database import get_db
+from ..services.user_service import get_user_by_sub
 from ..services.booking_service import (
     create_booking_record,
     create_google_event_for_host,
-    get_profile_by_slug,
+    extract_meet_link,
 )
-from ..services.user_service import get_user_by_id
-
 from ..models.booking import Booking
-from ..services.booking_service import extract_meet_link
-
 
 router = APIRouter(prefix="/bookings", tags=["bookings"])
 
 
-# ⭐ UPDATED PAYLOAD — supports meeting mode + location + attendees
 class CreateBookingPayload(BaseModel):
-    profile_slug: str
     guest_name: str
-    attendees: List[EmailStr]  # multiple attendees
+    attendees: List[EmailStr]
     start_iso: str
     title: Optional[str] = None
     timezone: Optional[str] = None
-
-    meeting_mode: str = "google_meet"  # ⭐ new field
-    location: Optional[str] = None  # ⭐ for in-person meetings
+    meeting_mode: str = "google_meet"
+    location: Optional[str] = None
 
 
 @router.post("/create")
-def create_booking(payload: CreateBookingPayload, db: Session = Depends(get_db)):
+def create_booking(user_sub: str, payload: CreateBookingPayload, db: Session = Depends(get_db)):
+    user = get_user_by_sub(db, user_sub)
+    if not user:
+        raise HTTPException(404, "User not found")
 
-    # 1️⃣ Load profile
-    profile = get_profile_by_slug(db, payload.profile_slug)
+    profile = user.booking_profiles[0] if user.booking_profiles else None
     if not profile:
         raise HTTPException(404, "Profile not found")
 
-    host_user = get_user_by_id(db, profile.user_id)
-    if not host_user:
-        raise HTTPException(404, "Host user not found")
+    host_user = user  # ✅ host is the same logged-in user
 
-    # 2️⃣ Parse start time
     try:
-        start_dt = datetime.fromisoformat(payload.start_iso)
+        start_dt = datetime.fromisoformat(payload.start_iso.replace("Z", "+00:00"))
     except:
         raise HTTPException(400, "Invalid start time format")
 
     end_dt = start_dt + timedelta(minutes=profile.duration_minutes)
 
-    # -----------------------------------------------------
-    # 3️⃣ Double-booking prevention
-    # -----------------------------------------------------
     conflict = (
         db.query(Booking)
         .filter(
@@ -64,33 +54,22 @@ def create_booking(payload: CreateBookingPayload, db: Session = Depends(get_db))
         )
         .first()
     )
-
     if conflict:
         raise HTTPException(409, "This time slot is already booked.")
 
-    # -----------------------------------------------------
-    # 4️⃣ Title
-    # -----------------------------------------------------
     final_title = payload.title or profile.title
-
-    # -----------------------------------------------------
-    # 5️⃣ Prepare attendees for Google Calendar
-    # -----------------------------------------------------
     attendees = [{"email": email} for email in payload.attendees]
 
+    event = None
     google_event_id = None
 
-    # -----------------------------------------------------
-    # 6️⃣ Google Calendar event handling
-    # -----------------------------------------------------
     if payload.meeting_mode == "google_meet":
-        # ⭐ If Google Meet → create meet link for all attendees
         try:
             event = create_google_event_for_host(
                 db,
                 host_user,
                 final_title,
-                f"Booking via {profile.slug} by {payload.guest_name}",
+                f"Booking by {payload.guest_name}",
                 start_dt,
                 end_dt,
                 attendees=attendees,
@@ -100,24 +79,16 @@ def create_booking(payload: CreateBookingPayload, db: Session = Depends(get_db))
             google_event_id = event.get("id")
         except Exception as e:
             print("Google event creation failed:", e)
+            event = None
             google_event_id = None
 
-    else:
-        # ⭐ In-person meeting — NO Google Meet created
-        google_event_id = None
-
-    # -----------------------------------------------------
-    # 7️⃣ Create database record
-    # -----------------------------------------------------
-    meet_link = (
-        extract_meet_link(event) if payload.meeting_mode == "google_meet" else None
-    )
+    meet_link = extract_meet_link(event) if event else None
 
     booking = create_booking_record(
         db,
         profile,
         payload.guest_name,
-        payload.attendees,  # store multiple attendees
+        payload.attendees,
         start_dt,
         end_dt,
         google_event_id,
@@ -133,6 +104,6 @@ def create_booking(payload: CreateBookingPayload, db: Session = Depends(get_db))
         "booking_id": booking.id,
         "google_event_id": google_event_id,
         "meeting_mode": payload.meeting_mode,
-        "meet_link": meet_link,  # ✅ new
+        "meet_link": meet_link,
         "attendees": payload.attendees,
     }
