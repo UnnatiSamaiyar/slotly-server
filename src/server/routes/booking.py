@@ -39,7 +39,7 @@ def create_booking(user_sub: str, payload: CreateBookingPayload, db: Session = D
     host_user = user  # ✅ host is the same logged-in user
 
     try:
-        start_dt = datetime.fromisoformat(payload.start_iso.replace("Z", "+00:00"))
+        start_dt = datetime.fromisoformat(payload.start_iso)
     except:
         raise HTTPException(400, "Invalid start time format")
 
